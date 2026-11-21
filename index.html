@@ -2,54 +2,56 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
 <title>Sri Lanka Open World</title>
 
 <script src="https://cesium.com/downloads/cesiumjs/releases/1.131/Build/Cesium/Cesium.js"></script>
 <link href="https://cesium.com/downloads/cesiumjs/releases/1.131/Build/Cesium/Widgets/widgets.css" rel="stylesheet">
 
 <style>
-* { box-sizing: border-box; }
-body {
-  margin: 0;
-  background: #080d13;
-  font-family: Arial, sans-serif;
-  color: white;
-}
+* { box-sizing: border-box; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+html, body { overscroll-behavior: none; }
+body { margin: 0; background: #080d13; font-family: Arial, sans-serif; color: white; }
 header {
-  height: 65px;
-  background: #101923;
-  display: flex;
-  align-items: center;
-  padding: 0 15px;
-  justify-content: space-between;
+  height: 65px; background: #101923; display: flex; align-items: center;
+  padding: 0 15px; justify-content: space-between;
 }
-.logo {
-  font-size: 17px;
-  font-weight: bold;
-  color: #63d8b2;
-}
+.logo { font-size: 17px; font-weight: bold; color: #63d8b2; }
 .status { font-size: 11px; color: #63d8b2; }
-#cesiumContainer {
-  width: 100%;
-  height: calc(100vh - 65px);
-}
+#cesiumContainer { width: 100%; height: calc(100vh - 65px); }
 .controls {
-  position: absolute;
-  z-index: 5;
-  top: 80px;
-  left: 12px;
-  display: flex;
-  flex-direction: column;
-  gap: 9px;
+  position: absolute; z-index: 20; top: 80px; left: 12px;
+  display: flex; flex-direction: column; gap: 9px;
 }
 button {
-  background: #101923;
-  color: white;
-  border: 1px solid #456071;
-  padding: 12px 15px;
-  border-radius: 9px;
-  font-size: 14px;
+  background: #101923; color: white; border: 1px solid #456071;
+  padding: 12px 15px; border-radius: 9px; font-size: 14px; touch-action: manipulation;
+}
+
+/* Game controls */
+#lookZone {
+  position: fixed; z-index: 8; top: 65px; right: 0; bottom: 0; width: 55%;
+  touch-action: none; display: none;
+}
+#joyBase {
+  position: fixed; z-index: 12; left: 28px; bottom: 130px;
+  width: 130px; height: 130px; border-radius: 50%;
+  background: rgba(16, 25, 35, 0.55); border: 2px solid rgba(99, 216, 178, 0.6);
+  touch-action: none; display: none;
+}
+#joyKnob {
+  position: absolute; left: 35px; top: 35px; width: 60px; height: 60px; border-radius: 50%;
+  background: rgba(99, 216, 178, 0.85);
+}
+#runBtn {
+  position: fixed; z-index: 12; right: 24px; bottom: 150px;
+  width: 76px; height: 76px; border-radius: 50%; font-size: 30px;
+  background: rgba(16, 25, 35, 0.8); display: none; touch-action: none;
+}
+#runBtn.on { background: #c0392b; }
+#hint {
+  position: fixed; z-index: 12; top: 75px; right: 12px; font-size: 12px;
+  background: rgba(16, 25, 35, 0.8); padding: 6px 10px; border-radius: 8px; display: none;
 }
 </style>
 </head>
@@ -63,7 +65,13 @@ button {
 <div class="controls">
   <button onclick="showSriLanka()">🇱🇰 Sri Lanka</button>
   <button onclick="showMatara()">📍 Matara</button>
+  <button onclick="startPlayer()">🚶 Player</button>
 </div>
+
+<div id="hint">වම: ඇවිදින්න · දකුණ: බලන්න</div>
+<div id="lookZone"></div>
+<div id="joyBase"><div id="joyKnob"></div></div>
+<button id="runBtn">🏃</button>
 
 <div id="cesiumContainer"></div>
 
@@ -76,26 +84,154 @@ const viewer = new Cesium.Viewer("cesiumContainer", {
     })
   ),
   terrainProvider: new Cesium.EllipsoidTerrainProvider(),
-  animation: false,
-  timeline: false,
-  baseLayerPicker: false,
-  geocoder: false,
-  homeButton: false,
-  sceneModePicker: false,
-  navigationHelpButton: false
+  animation: false, timeline: false, baseLayerPicker: false, geocoder: false,
+  homeButton: false, sceneModePicker: false, navigationHelpButton: false
 });
 
-function showSriLanka() {
-  viewer.camera.flyTo({
-    destination: Cesium.Cartesian3.fromDegrees(80.7, 7.8, 1000000),
-    duration: 2
-  });
+// ---------- Player state ----------
+let lon = 80.5550, lat = 5.9485;
+let camHeading = 0;      // degrees, direction camera looks
+let camPitch = -30;      // degrees
+const camRange = 25;
+let playing = false;
+let running = false;
+let joyX = 0, joyY = 0;  // -1..1
+const keys = {};
+
+const player = viewer.entities.add({
+  position: new Cesium.CallbackProperty(() => Cesium.Cartesian3.fromDegrees(lon, lat, 1), false),
+  cylinder: { length: 2, topRadius: 0.5, bottomRadius: 0.5, material: Cesium.Color.RED },
+  show: false
+});
+
+function updateCamera() {
+  viewer.camera.lookAt(
+    Cesium.Cartesian3.fromDegrees(lon, lat, 1),
+    new Cesium.HeadingPitchRange(
+      Cesium.Math.toRadians(camHeading),
+      Cesium.Math.toRadians(camPitch),
+      camRange
+    )
+  );
 }
 
-function showMatara() {
+function startPlayer() {
+  playing = true;
+  player.show = true;
+  viewer.scene.screenSpaceCameraController.enableInputs = false;
+  ["lookZone", "joyBase", "runBtn", "hint"].forEach(id => {
+    document.getElementById(id).style.display = id === "hint" ? "block" : (id === "lookZone" ? "block" : "block");
+  });
+  updateCamera();
+  setTimeout(() => { document.getElementById("hint").style.display = "none"; }, 5000);
+}
+
+function stopPlayer() {
+  playing = false;
+  player.show = false;
+  viewer.scene.screenSpaceCameraController.enableInputs = true;
+  ["lookZone", "joyBase", "runBtn", "hint"].forEach(id => {
+    document.getElementById(id).style.display = "none";
+  });
+  viewer.camera.lookAtTransform(Cesium.Matrix4.IDENTITY);
+}
+
+// ---------- Joystick ----------
+const joyBase = document.getElementById("joyBase");
+const joyKnob = document.getElementById("joyKnob");
+let joyId = null;
+
+function joyUpdate(e) {
+  const r = joyBase.getBoundingClientRect();
+  const cx = r.left + r.width / 2, cy = r.top + r.height / 2;
+  let dx = e.clientX - cx, dy = e.clientY - cy;
+  const max = r.width / 2 - 10;
+  const len = Math.hypot(dx, dy);
+  if (len > max) { dx = dx / len * max; dy = dy / len * max; }
+  joyKnob.style.left = (35 + dx) + "px";
+  joyKnob.style.top = (35 + dy) + "px";
+  joyX = dx / max;
+  joyY = dy / max;
+}
+function joyEnd() {
+  joyId = null; joyX = 0; joyY = 0;
+  joyKnob.style.left = "35px"; joyKnob.style.top = "35px";
+}
+joyBase.addEventListener("pointerdown", e => {
+  e.preventDefault(); joyId = e.pointerId; joyBase.setPointerCapture(e.pointerId); joyUpdate(e);
+});
+joyBase.addEventListener("pointermove", e => { if (e.pointerId === joyId) joyUpdate(e); });
+joyBase.addEventListener("pointerup", joyEnd);
+joyBase.addEventListener("pointercancel", joyEnd);
+
+// ---------- Look (swipe right side) ----------
+const lookZone = document.getElementById("lookZone");
+let lookId = null, lastX = 0, lastY = 0;
+lookZone.addEventListener("pointerdown", e => {
+  e.preventDefault(); lookId = e.pointerId; lookZone.setPointerCapture(e.pointerId);
+  lastX = e.clientX; lastY = e.clientY;
+});
+lookZone.addEventListener("pointermove", e => {
+  if (e.pointerId !== lookId) return;
+  camHeading = (camHeading + (e.clientX - lastX) * 0.35 + 360) % 360;
+  camPitch = Math.max(-80, Math.min(-8, camPitch - (e.clientY - lastY) * 0.25));
+  lastX = e.clientX; lastY = e.clientY;
+});
+lookZone.addEventListener("pointerup", () => { lookId = null; });
+lookZone.addEventListener("pointercancel", () => { lookId = null; });
+
+// ---------- Run button ----------
+const runBtn = document.getElementById("runBtn");
+runBtn.addEventListener("pointerdown", e => { e.preventDefault(); running = true; runBtn.classList.add("on"); });
+const runEnd = () => { running = false; runBtn.classList.remove("on"); };
+runBtn.addEventListener("pointerup", runEnd);
+runBtn.addEventListener("pointercancel", runEnd);
+runBtn.addEventListener("pointerleave", runEnd);
+
+// ---------- Keyboard (computer) ----------
+window.addEventListener("keydown", e => { keys[e.key.toLowerCase()] = true; });
+window.addEventListener("keyup", e => { keys[e.key.toLowerCase()] = false; });
+
+// ---------- Game loop ----------
+let lastT = performance.now();
+function loop(now) {
+  const dt = Math.min((now - lastT) / 1000, 0.1);
+  lastT = now;
+
+  if (playing) {
+    let x = joyX, y = joyY;
+    if (keys["w"] || keys["arrowup"]) y -= 1;
+    if (keys["s"] || keys["arrowdown"]) y += 1;
+    if (keys["a"] || keys["arrowleft"]) x -= 1;
+    if (keys["d"] || keys["arrowright"]) x += 1;
+    if (keys["q"]) camHeading = (camHeading - 90 * dt + 360) % 360;
+    if (keys["e"]) camHeading = (camHeading + 90 * dt) % 360;
+
+    const mag = Math.min(1, Math.hypot(x, y));
+    if (mag > 0.08) {
+      const speed = (running || keys["shift"]) ? 14 : 5;      // meters per second
+      const dir = Cesium.Math.toRadians(camHeading) + Math.atan2(x, -y);
+      const dist = speed * mag * dt;
+      lat += (Math.cos(dir) * dist) / 111320;
+      lon += (Math.sin(dir) * dist) / (111320 * Math.cos(Cesium.Math.toRadians(lat)));
+    }
+    updateCamera();
+  }
+  requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+
+// ---------- Map buttons ----------
+function showSriLanka() {
+  stopPlayer();
   viewer.camera.flyTo({
-    destination: Cesium.Cartesian3.fromDegrees(80.55, 5.95, 25000),
-    duration: 2
+    destination: Cesium.Cartesian3.fromDegrees(80.7, 7.8, 1000000), duration: 2
+  });
+}
+function showMatara() {
+  stopPlayer();
+  viewer.camera.flyTo({
+    destination: Cesium.Cartesian3.fromDegrees(80.55, 5.95, 25000), duration: 2
   });
 }
 
