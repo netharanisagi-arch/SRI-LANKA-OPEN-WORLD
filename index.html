@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -70,9 +69,12 @@ button {
 
 <script>
 const viewer = new Cesium.Viewer("cesiumContainer", {
-  imageryProvider: new Cesium.UrlTemplateImageryProvider({
-    url: "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
-  }),
+  baseLayer: new Cesium.ImageryLayer(
+    new Cesium.UrlTemplateImageryProvider({
+      url: "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+      maximumLevel: 18
+    })
+  ),
   terrainProvider: new Cesium.EllipsoidTerrainProvider(),
   animation: false,
   timeline: false,
@@ -85,18 +87,14 @@ const viewer = new Cesium.Viewer("cesiumContainer", {
 
 function showSriLanka() {
   viewer.camera.flyTo({
-    destination: Cesium.Cartesian3.fromDegrees(
-      80.7, 7.8, 1000000
-    ),
+    destination: Cesium.Cartesian3.fromDegrees(80.7, 7.8, 1000000),
     duration: 2
   });
 }
 
 function showMatara() {
   viewer.camera.flyTo({
-    destination: Cesium.Cartesian3.fromDegrees(
-      80.55, 5.95, 25000
-    ),
+    destination: Cesium.Cartesian3.fromDegrees(80.55, 5.95, 25000),
     duration: 2
   });
 }
