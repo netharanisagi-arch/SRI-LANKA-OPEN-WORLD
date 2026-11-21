@@ -84,14 +84,31 @@ const viewer = new Cesium.Viewer("cesiumContainer", {
 });
 viewer.scene.globe.depthTestAgainstTerrain = true;
 
-// ---------- 3D Buildings ----------
-Cesium.createOsmBuildingsAsync()
-  .then(function (tileset) { viewer.scene.primitives.add(tileset); })
-  .catch(function (err) { console.error("Buildings error:", err); });
+// ---------- 3D City: Google Photorealistic (backup: OSM buildings) ----------
+let googleOK = false;
+
+function loadOsmBuildings() {
+  Cesium.createOsmBuildingsAsync()
+    .then(function (tileset) { viewer.scene.primitives.add(tileset); })
+    .catch(function (err) { console.error("OSM buildings error:", err); });
+}
+
+Cesium.Cesium3DTileset.fromIonAssetId(2275207, { maximumScreenSpaceError: 12 })
+  .then(function (tileset) {
+    viewer.scene.primitives.add(tileset);
+    viewer.scene.globe.show = false;   // Google tiles already include the ground
+    googleOK = true;
+  })
+  .catch(function (err) {
+    console.error("Google 3D tiles error:", err);
+    loadOsmBuildings();
+  });
 
 // ---------- Player state ----------
 let lon = 80.5550, lat = 5.9485;
 let groundH = 0;
+let groundInit = false;
+let frameCount = 0;
 let camHeading = 0;
 let camPitch = -30;
 const camRange = 25;
@@ -108,12 +125,20 @@ const player = viewer.entities.add({
   show: false
 });
 
-function updateGround() {
-  const h = viewer.scene.globe.getHeight(
-    Cesium.Cartographic.fromDegrees(lon, lat)
-  );
+function updateGround(force) {
+  frameCount++;
+  if (!force && frameCount % 4 !== 0) return;
+  const c = Cesium.Cartographic.fromDegrees(lon, lat);
+  let h;
+  if (googleOK) {
+    try { h = viewer.scene.sampleHeight(c, [player]); } catch (e) { h = undefined; }
+  }
+  if (h === undefined) {
+    try { h = viewer.scene.globe.getHeight(c); } catch (e) { h = undefined; }
+  }
   if (h !== undefined) {
-    groundH += (h - groundH) * 0.3;
+    if (!groundInit) { groundH = h; groundInit = true; }
+    else { groundH += (h - groundH) * 0.25; }
   }
 }
 
@@ -136,10 +161,11 @@ function showUI(show) {
 
 function startPlayer() {
   playing = true;
+  groundInit = false;
   player.show = true;
   viewer.scene.screenSpaceCameraController.enableInputs = false;
   showUI(true);
-  updateGround();
+  updateGround(true);
   updateCamera();
 }
 
@@ -230,7 +256,7 @@ function loop(now) {
       lat += (Math.cos(dir) * dist) / 111320;
       lon += (Math.sin(dir) * dist) / (111320 * Math.cos(Cesium.Math.toRadians(lat)));
     }
-    updateGround();
+    updateGround(false);
     updateCamera();
   }
   requestAnimationFrame(loop);
