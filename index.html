@@ -1,0 +1,107 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sri Lanka Open World</title>
+
+<script src="https://cesium.com/downloads/cesiumjs/releases/1.131/Build/Cesium/Cesium.js"></script>
+<link href="https://cesium.com/downloads/cesiumjs/releases/1.131/Build/Cesium/Widgets/widgets.css" rel="stylesheet">
+
+<style>
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: #080d13;
+  font-family: Arial, sans-serif;
+  color: white;
+}
+header {
+  height: 65px;
+  background: #101923;
+  display: flex;
+  align-items: center;
+  padding: 0 15px;
+  justify-content: space-between;
+}
+.logo {
+  font-size: 17px;
+  font-weight: bold;
+  color: #63d8b2;
+}
+.status { font-size: 11px; color: #63d8b2; }
+#cesiumContainer {
+  width: 100%;
+  height: calc(100vh - 65px);
+}
+.controls {
+  position: absolute;
+  z-index: 5;
+  top: 80px;
+  left: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+button {
+  background: #101923;
+  color: white;
+  border: 1px solid #456071;
+  padding: 12px 15px;
+  border-radius: 9px;
+  font-size: 14px;
+}
+</style>
+</head>
+
+<body>
+<header>
+  <div class="logo">🇱🇰 SRI LANKA OPEN WORLD</div>
+  <div class="status">● WORLD MAP</div>
+</header>
+
+<div class="controls">
+  <button onclick="showSriLanka()">🇱🇰 Sri Lanka</button>
+  <button onclick="showMatara()">📍 Matara</button>
+</div>
+
+<div id="cesiumContainer"></div>
+
+<script>
+const viewer = new Cesium.Viewer("cesiumContainer", {
+  imageryProvider: new Cesium.UrlTemplateImageryProvider({
+    url: "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
+  }),
+  terrainProvider: new Cesium.EllipsoidTerrainProvider(),
+  animation: false,
+  timeline: false,
+  baseLayerPicker: false,
+  geocoder: false,
+  homeButton: false,
+  sceneModePicker: false,
+  navigationHelpButton: false
+});
+
+function showSriLanka() {
+  viewer.camera.flyTo({
+    destination: Cesium.Cartesian3.fromDegrees(
+      80.7, 7.8, 1000000
+    ),
+    duration: 2
+  });
+}
+
+function showMatara() {
+  viewer.camera.flyTo({
+    destination: Cesium.Cartesian3.fromDegrees(
+      80.55, 5.95, 25000
+    ),
+    duration: 2
+  });
+}
+
+showSriLanka();
+</script>
+</body>
+</html>
