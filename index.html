@@ -4,38 +4,24 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
 <title>Sri Lanka Open World</title>
-
-<script src="https://cesium.com/downloads/cesiumjs/releases/1.131/Build/Cesium/Cesium.js"></script>
-<link href="https://cesium.com/downloads/cesiumjs/releases/1.131/Build/Cesium/Widgets/widgets.css" rel="stylesheet">
-
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <style>
 * { box-sizing: border-box; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
-html, body { overscroll-behavior: none; }
-body { margin: 0; background: #080d13; font-family: Arial, sans-serif; color: white; }
+html, body { margin: 0; height: 100%; overflow: hidden; overscroll-behavior: none; background: #080d13; font-family: Arial, sans-serif; color: white; }
 header {
   height: 65px; background: #101923; display: flex; align-items: center;
   padding: 0 15px; justify-content: space-between;
 }
 .logo { font-size: 17px; font-weight: bold; color: #63d8b2; }
-.status { font-size: 11px; color: #63d8b2; }
-#cesiumContainer { width: 100%; height: calc(100vh - 65px); }
-.controls {
-  position: absolute; z-index: 20; top: 80px; left: 12px;
-  display: flex; flex-direction: column; gap: 9px;
-}
-button {
-  background: #101923; color: white; border: 1px solid #456071;
-  padding: 12px 15px; border-radius: 9px; font-size: 14px; touch-action: manipulation;
-}
-#lookZone {
-  position: fixed; z-index: 8; top: 65px; right: 0; bottom: 0; width: 55%;
-  touch-action: none; display: none;
-}
+#status { font-size: 11px; color: #63d8b2; max-width: 45%; text-align: right; }
+#gameBox { position: absolute; top: 65px; left: 0; right: 0; bottom: 0; }
+#gameBox canvas { display: block; width: 100%; height: 100%; touch-action: none; }
+#lookZone { position: fixed; z-index: 8; top: 65px; right: 0; bottom: 0; width: 55%; touch-action: none; }
 #joyBase {
   position: fixed; z-index: 12; left: 28px; bottom: 130px;
   width: 130px; height: 130px; border-radius: 50%;
   background: rgba(16, 25, 35, 0.55); border: 2px solid rgba(99, 216, 178, 0.6);
-  touch-action: none; display: none;
+  touch-action: none;
 }
 #joyKnob {
   position: absolute; left: 35px; top: 35px; width: 60px; height: 60px; border-radius: 50%;
@@ -44,140 +30,406 @@ button {
 #runBtn {
   position: fixed; z-index: 12; right: 24px; bottom: 150px;
   width: 76px; height: 76px; border-radius: 50%; font-size: 30px;
-  background: rgba(16, 25, 35, 0.8); display: none; touch-action: none;
+  background: rgba(16, 25, 35, 0.8); color: white; border: 1px solid #456071; touch-action: none;
 }
 #runBtn.on { background: #c0392b; }
+#homeBtn {
+  position: fixed; z-index: 12; left: 12px; top: 80px;
+  background: rgba(16, 25, 35, 0.85); color: white; border: 1px solid #456071;
+  padding: 10px 14px; border-radius: 9px; font-size: 14px; touch-action: manipulation;
+}
 </style>
 </head>
-
 <body>
 <header>
   <div class="logo">🇱🇰 SRI LANKA OPEN WORLD</div>
-  <div class="status">● WORLD MAP</div>
+  <div id="status">Loading…</div>
 </header>
 
-<div class="controls">
-  <button onclick="showSriLanka()">🇱🇰 Sri Lanka</button>
-  <button onclick="showMatara()">📍 Matara</button>
-  <button onclick="startPlayer()">🚶 Player</button>
-</div>
-
+<div id="gameBox"></div>
 <div id="lookZone"></div>
 <div id="joyBase"><div id="joyKnob"></div></div>
 <button id="runBtn">🏃</button>
-
-<div id="cesiumContainer"></div>
+<button id="homeBtn">📍 Matara</button>
 
 <script>
-Cesium.Ion.defaultAccessToken = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJub25jZSI6IlhLLXFTTGVZZWFmbUlkeEsiLCJqdGkiOiI3M2U5MDA2Ni1lMWZmLTQ3NTItOTYzZi0wYjY1NTc5NDVmOTMiLCJpZCI6NTU0MDE2LCJpc3MiOiJodHRwczovL2FwaS5jZXNpdW0uY29tIiwiYXVkIjoidW5kZWZpbmVkX2RlZmF1bHQiLCJpYXQiOjE3OTUyNDk2NjZ9.YrzSooNU0P6USJc_IEZFltOJwEoTkTJ-ln9la_x0vao";
+// ================= Origin (Matara) =================
+const ORIGIN = { lat: 5.9494, lon: 80.5478 };
+const MLAT = 111320;
+const MLON = 111320 * Math.cos(ORIGIN.lat * Math.PI / 180);
+const toX = lon => (lon - ORIGIN.lon) * MLON;
+const toZ = lat => -(lat - ORIGIN.lat) * MLAT;
+const toLon = x => ORIGIN.lon + x / MLON;
+const toLat = z => ORIGIN.lat - z / MLAT;
+const rnd = id => { const s = Math.sin(id * 12.9898) * 43758.5453; return s - Math.floor(s); };
 
-const viewer = new Cesium.Viewer("cesiumContainer", {
-  baseLayer: new Cesium.ImageryLayer(
-    new Cesium.UrlTemplateImageryProvider({
-      url: "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
-      maximumLevel: 18
-    })
-  ),
-  terrain: Cesium.Terrain.fromWorldTerrain(),
-  animation: false, timeline: false, baseLayerPicker: false, geocoder: false,
-  homeButton: false, sceneModePicker: false, navigationHelpButton: false
-});
-viewer.scene.globe.depthTestAgainstTerrain = true;
+// ================= Scene =================
+const box = document.getElementById("gameBox");
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+box.appendChild(renderer.domElement);
 
-// ---------- 3D City: Google Photorealistic (backup: OSM buildings) ----------
-let googleOK = false;
+const SKY = 0x9ec9ee;
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(SKY);
+scene.fog = new THREE.Fog(SKY, 160, 520);
 
-function loadOsmBuildings() {
-  Cesium.createOsmBuildingsAsync()
-    .then(function (tileset) { viewer.scene.primitives.add(tileset); })
-    .catch(function (err) { console.error("OSM buildings error:", err); });
+const camera = new THREE.PerspectiveCamera(60, 1, 0.5, 1500);
+scene.add(new THREE.HemisphereLight(0xffffff, 0x8a8a70, 0.9));
+const sun = new THREE.DirectionalLight(0xfff1d6, 0.8);
+sun.position.set(80, 150, 60);
+scene.add(sun);
+
+function resize() {
+  const w = box.clientWidth, h = box.clientHeight;
+  renderer.setSize(w, h, false);
+  camera.aspect = w / h;
+  camera.updateProjectionMatrix();
+}
+window.addEventListener("resize", resize);
+resize();
+
+const ground = new THREE.Mesh(
+  new THREE.PlaneGeometry(3000, 3000),
+  new THREE.MeshLambertMaterial({ color: 0x8d9b62 })
+);
+ground.rotation.x = -Math.PI / 2;
+scene.add(ground);
+
+// ---- window texture ----
+function makeWallTexture() {
+  const c = document.createElement("canvas");
+  c.width = c.height = 64;
+  const g = c.getContext("2d");
+  g.fillStyle = "#ffffff"; g.fillRect(0, 0, 64, 64);
+  g.fillStyle = "#e2e2e2"; g.fillRect(0, 56, 64, 8);
+  g.fillStyle = "#34495e"; g.fillRect(14, 14, 36, 30);
+  g.fillStyle = "#5d7b96"; g.fillRect(14, 14, 36, 10);
+  g.fillStyle = "#ffffff"; g.fillRect(31, 14, 2, 30);
+  const t = new THREE.CanvasTexture(c);
+  t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  t.anisotropy = 4;
+  return t;
+}
+const wallMat = new THREE.MeshLambertMaterial({ map: makeWallTexture(), vertexColors: true });
+const flatMat = new THREE.MeshLambertMaterial({ vertexColors: true });
+
+// ================= Geometry helpers =================
+function pushTriUp(pos, col, p0, p1, p2, c) {
+  const cy = (p1[2] - p0[2]) * (p2[0] - p0[0]) - (p1[0] - p0[0]) * (p2[2] - p0[2]);
+  if (cy < 0) { const t = p1; p1 = p2; p2 = t; }
+  [p0, p1, p2].forEach(p => { pos.push(p[0], p[1], p[2]); col.push(c.r, c.g, c.b); });
 }
 
-Cesium.Cesium3DTileset.fromIonAssetId(2275207, { maximumScreenSpaceError: 12 })
-  .then(function (tileset) {
-    viewer.scene.primitives.add(tileset);
-    viewer.scene.globe.show = false;   // Google tiles already include the ground
-    googleOK = true;
-  })
-  .catch(function (err) {
-    console.error("Google 3D tiles error:", err);
-    loadOsmBuildings();
+function ribbon(pos, col, a, b, w, y, c, ext) {
+  const dx = b.x - a.x, dz = b.z - a.z;
+  const len = Math.hypot(dx, dz);
+  if (len < 0.01) return;
+  const ux = dx / len, uz = dz / len, nx = -uz, nz = ux, h = w / 2;
+  const ax = a.x - ux * ext, az = a.z - uz * ext, bx = b.x + ux * ext, bz = b.z + uz * ext;
+  const p1 = [ax + nx * h, y, az + nz * h], p2 = [ax - nx * h, y, az - nz * h];
+  const p3 = [bx - nx * h, y, bz - nz * h], p4 = [bx + nx * h, y, bz + nz * h];
+  pushTriUp(pos, col, p1, p2, p3, c);
+  pushTriUp(pos, col, p1, p3, p4, c);
+}
+
+function polyArea(pts) {
+  let A = 0;
+  for (let i = 0; i < pts.length; i++) {
+    const j = (i + 1) % pts.length;
+    A += pts[i].x * pts[j].z - pts[j].x * pts[i].z;
+  }
+  return A / 2;
+}
+
+function pointInPoly(x, z, pts) {
+  let inside = false;
+  for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) {
+    const xi = pts[i].x, zi = pts[i].z, xj = pts[j].x, zj = pts[j].z;
+    if (((zi > z) !== (zj > z)) && (x < (xj - xi) * (z - zi) / (zj - zi) + xi)) inside = !inside;
+  }
+  return inside;
+}
+
+function insideAny(list, x, z) {
+  for (let i = 0; i < list.length; i++) {
+    const b = list[i];
+    if (x < b.minx || x > b.maxx || z < b.minz || z > b.maxz) continue;
+    if (pointInPoly(x, z, b.pts)) return true;
+  }
+  return false;
+}
+
+function makeMesh(pos, col, nor, uv, material) {
+  const g = new THREE.BufferGeometry();
+  g.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute("color", new THREE.Float32BufferAttribute(col, 3));
+  if (uv) g.setAttribute("uv", new THREE.Float32BufferAttribute(uv, 2));
+  if (nor) g.setAttribute("normal", new THREE.Float32BufferAttribute(nor, 3));
+  else g.computeVertexNormals();
+  return new THREE.Mesh(g, material);
+}
+
+// ================= Build a map chunk =================
+const WALLS = [0xf2e9d0, 0xe9d8a6, 0xd9c7a0, 0xc9d6c0, 0xe8c9b8, 0xf5f5f0, 0xd8dfe6, 0xe3c58b, 0xb7c9a8];
+const ROOFS = [0x8b4a3a, 0x6e6e6e, 0x9a5b44, 0xa0a0a0, 0x7a5a4a];
+const ROAD_W = {
+  motorway: 12, trunk: 11, primary: 10, secondary: 9, tertiary: 8,
+  unclassified: 6, residential: 6, living_street: 5, service: 4, track: 3.5,
+  footway: 2, path: 1.8, pedestrian: 3, cycleway: 2, steps: 1.5
+};
+const FOOT = { footway: 1, path: 1, pedestrian: 1, cycleway: 1, steps: 1, track: 1 };
+
+function buildChunk(data) {
+  const group = new THREE.Group();
+  const newB = [];
+
+  const wPos = [], wNor = [], wUv = [], wCol = [];
+  const rPos = [], rCol = [];       // roofs
+  const gPos = [], gCol = [];       // ground things (roads, water)
+
+  const roads = [];
+  let nBuild = 0, nRoad = 0;
+
+  data.elements.forEach(el => {
+    if (el.type !== "way" || !el.geometry || el.geometry.length < 2) return;
+    const tags = el.tags || {};
+    const pts = el.geometry.map(p => ({ x: toX(p.lon), z: toZ(p.lat) }));
+
+    if (tags.building) {
+      let P = pts.slice();
+      if (P.length > 3 && Math.abs(P[0].x - P[P.length - 1].x) < 0.01 && Math.abs(P[0].z - P[P.length - 1].z) < 0.01) P.pop();
+      if (P.length < 3) return;
+      if (polyArea(P) < 0) P.reverse();
+      if (polyArea(P) < 6) return;
+
+      let h = parseFloat(tags.height);
+      if (!h) {
+        const lv = parseFloat(tags["building:levels"]);
+        h = lv ? lv * 3.2 : 4 + rnd(el.id) * 4;
+      }
+      h = Math.max(3, Math.min(h, 120));
+      const floors = Math.max(1, Math.round(h / 3));
+      const wc = new THREE.Color(WALLS[Math.floor(rnd(el.id + 1) * WALLS.length)]);
+      const rc = new THREE.Color(ROOFS[Math.floor(rnd(el.id + 2) * ROOFS.length)]);
+
+      let u = 0;
+      const n = P.length;
+      for (let i = 0; i < n; i++) {
+        const a = P[i], b = P[(i + 1) % n];
+        const dx = b.x - a.x, dz = b.z - a.z, len = Math.hypot(dx, dz);
+        if (len < 0.01) continue;
+        const nx = dz / len, nz = -dx / len;
+        const u0 = u / 3.5, u1 = (u + len) / 3.5;
+        const V = [
+          [a.x, 0, a.z, u0, 0], [b.x, h, b.z, u1, floors], [b.x, 0, b.z, u1, 0],
+          [a.x, 0, a.z, u0, 0], [a.x, h, a.z, u0, floors], [b.x, h, b.z, u1, floors]
+        ];
+        V.forEach(v => {
+          wPos.push(v[0], v[1], v[2]);
+          wNor.push(nx, 0, nz);
+          wUv.push(v[3], v[4]);
+          wCol.push(wc.r, wc.g, wc.b);
+        });
+        u += len;
+      }
+
+      try {
+        const contour = P.map(p => new THREE.Vector2(p.x, p.z));
+        const tris = THREE.ShapeUtils.triangulateShape(contour, []);
+        tris.forEach(t => {
+          pushTriUp(rPos, rCol,
+            [P[t[0]].x, h + 0.05, P[t[0]].z],
+            [P[t[1]].x, h + 0.05, P[t[1]].z],
+            [P[t[2]].x, h + 0.05, P[t[2]].z], rc);
+        });
+      } catch (e) {}
+
+      let minx = 1e9, maxx = -1e9, minz = 1e9, maxz = -1e9;
+      P.forEach(p => {
+        minx = Math.min(minx, p.x); maxx = Math.max(maxx, p.x);
+        minz = Math.min(minz, p.z); maxz = Math.max(maxz, p.z);
+      });
+      newB.push({ pts: P, minx, maxx, minz, maxz });
+      nBuild++;
+    } else if (tags.highway && ROAD_W[tags.highway]) {
+      roads.push({ pts, type: tags.highway, w: ROAD_W[tags.highway] });
+      nRoad++;
+    } else if (tags.natural === "water" || tags.waterway === "riverbank") {
+      let P = pts.slice();
+      if (P.length > 3) P.pop();
+      if (P.length < 3) return;
+      try {
+        const tris = THREE.ShapeUtils.triangulateShape(P.map(p => new THREE.Vector2(p.x, p.z)), []);
+        const wc2 = new THREE.Color(0x3d8fb8);
+        tris.forEach(t => pushTriUp(gPos, gCol,
+          [P[t[0]].x, 0.02, P[t[0]].z], [P[t[1]].x, 0.02, P[t[1]].z], [P[t[2]].x, 0.02, P[t[2]].z], wc2));
+      } catch (e) {}
+    }
   });
 
-// ---------- Player state ----------
-let lon = 80.5550, lat = 5.9485;
-let groundH = 0;
-let groundInit = false;
-let frameCount = 0;
-let camHeading = 0;
-let camPitch = -30;
-const camRange = 25;
-let playing = false;
-let running = false;
-let joyX = 0, joyY = 0;
+  // ---- roads ----
+  const asphalt = new THREE.Color(0x3b3d42);
+  const side = new THREE.Color(0x9c9a93);
+  const foot = new THREE.Color(0xa89f91);
+  const dash = new THREE.Color(0xe9e6d0);
+
+  roads.forEach(r => {
+    const isFoot = !!FOOT[r.type];
+    const y = 0.06 + (12 - r.w) * 0.002;
+    for (let i = 0; i < r.pts.length - 1; i++) {
+      const a = r.pts[i], b = r.pts[i + 1];
+      if (!isFoot && r.w >= 6) ribbon(gPos, gCol, a, b, r.w + 3, 0.03, side, r.w * 0.35);
+      ribbon(gPos, gCol, a, b, r.w, y, isFoot ? foot : asphalt, r.w * 0.35);
+      if (!isFoot && r.w >= 6) {
+        const dx = b.x - a.x, dz = b.z - a.z, len = Math.hypot(dx, dz);
+        if (len > 6) {
+          const ux = dx / len, uz = dz / len;
+          for (let d = 2; d + 3 < len; d += 8) {
+            const p = { x: a.x + ux * d, z: a.z + uz * d };
+            const q = { x: a.x + ux * (d + 3), z: a.z + uz * (d + 3) };
+            ribbon(gPos, gCol, p, q, 0.2, 0.1, dash, 0);
+          }
+        }
+      }
+    }
+  });
+
+  if (wPos.length) group.add(makeMesh(wPos, wCol, wNor, wUv, wallMat));
+  if (rPos.length) group.add(makeMesh(rPos, rCol, null, null, flatMat));
+  if (gPos.length) group.add(makeMesh(gPos, gCol, null, null, flatMat));
+
+  // ---- trees along roads ----
+  const trees = [];
+  roads.forEach((r, ri) => {
+    if (FOOT[r.type] || r.w < 4) return;
+    for (let i = 0; i < r.pts.length - 1; i++) {
+      const a = r.pts[i], b = r.pts[i + 1];
+      const dx = b.x - a.x, dz = b.z - a.z, len = Math.hypot(dx, dz);
+      if (len < 1) continue;
+      const ux = dx / len, uz = dz / len, nx = -uz, nz = ux;
+      for (let d = 4; d < len; d += 16) {
+        const seed = ri * 1000 + i * 37 + d;
+        if (rnd(seed) > 0.6) continue;
+        const sgn = rnd(seed + 1) > 0.5 ? 1 : -1;
+        const off = (r.w / 2 + 3.2) * sgn;
+        const x = a.x + ux * d + nx * off, z = a.z + uz * d + nz * off;
+        if (insideAny(newB, x, z)) continue;
+        trees.push({ x, z, h: 5 + rnd(seed + 2) * 4 });
+        if (trees.length >= 300) return;
+      }
+    }
+  });
+  if (trees.length) {
+    const trunkG = new THREE.CylinderGeometry(0.22, 0.32, 1, 5);
+    trunkG.translate(0, 0.5, 0);
+    const crownG = new THREE.SphereGeometry(1, 6, 5);
+    const trunkM = new THREE.InstancedMesh(trunkG, new THREE.MeshLambertMaterial({ color: 0x6b4f35 }), trees.length);
+    const crownM = new THREE.InstancedMesh(crownG, new THREE.MeshLambertMaterial({ color: 0x3f7d3a }), trees.length);
+    const m = new THREE.Matrix4(), q = new THREE.Quaternion(), s = new THREE.Vector3(), p = new THREE.Vector3();
+    trees.forEach((t, i) => {
+      p.set(t.x, 0, t.z); s.set(1, t.h, 1); m.compose(p, q, s); trunkM.setMatrixAt(i, m);
+      p.set(t.x, t.h + 0.2, t.z); s.set(2.4, 1.2, 2.4); m.compose(p, q, s); crownM.setMatrixAt(i, m);
+    });
+    group.add(trunkM, crownM);
+  }
+
+  return { group, buildings: newB, nBuild, nRoad };
+}
+
+// ================= Chunk loading =================
+const SERVERS = [
+  "https://overpass-api.de/api/interpreter",
+  "https://overpass.kumi.systems/api/interpreter",
+  "https://overpass.private.coffee/api/interpreter"
+];
+let chunkGroup = null, chunkCenter = null, loading = false, buildings = [];
+const statusEl = document.getElementById("status");
+function setStatus(t, hideAfter) {
+  statusEl.textContent = t;
+  if (hideAfter) setTimeout(() => { statusEl.textContent = "● MATARA"; }, hideAfter);
+}
+
+async function fetchOsm(query) {
+  for (const url of SERVERS) {
+    try {
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), 30000);
+      const r = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: "data=" + encodeURIComponent(query),
+        signal: ctrl.signal
+      });
+      clearTimeout(timer);
+      if (!r.ok) continue;
+      return await r.json();
+    } catch (e) { /* try next server */ }
+  }
+  return null;
+}
+
+async function loadChunk(cx, cz) {
+  loading = true;
+  setStatus("⏳ සිතියම load වෙනවා…");
+  const R = 420;
+  const s = toLat(cz + R), n = toLat(cz - R), w = toLon(cx - R), e = toLon(cx + R);
+  const bb = s + "," + w + "," + n + "," + e;
+  const q = '[out:json][timeout:25];(way["building"](' + bb + ');way["highway"](' + bb +
+            ');way["natural"="water"](' + bb + '););out geom;';
+  const data = await fetchOsm(q);
+  if (!data) {
+    setStatus("❌ සිතියම ගන්න බැරි වුණා (Internet බලන්න)");
+    chunkCenter = { x: cx, z: cz };
+    loading = false;
+    return;
+  }
+  const built = buildChunk(data);
+  if (chunkGroup) {
+    scene.remove(chunkGroup);
+    chunkGroup.traverse(o => { if (o.geometry) o.geometry.dispose(); });
+  }
+  chunkGroup = built.group;
+  scene.add(chunkGroup);
+  buildings = built.buildings;
+  chunkCenter = { x: cx, z: cz };
+  loading = false;
+  setStatus("🏠 " + built.nBuild + " ගොඩනැගිලි · 🛣️ " + built.nRoad + " පාරවල්", 5000);
+}
+
+// ================= Player =================
+const player = new THREE.Group();
+function part(w, h, d, color, x, y, z) {
+  const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), new THREE.MeshLambertMaterial({ color }));
+  m.position.set(x, y, z);
+  return m;
+}
+const body = part(0.7, 0.9, 0.4, 0xd62828, 0, 1.25, 0);
+const head = new THREE.Mesh(new THREE.SphereGeometry(0.22, 10, 8), new THREE.MeshLambertMaterial({ color: 0xd9a77a }));
+head.position.set(0, 1.95, 0);
+const legL = new THREE.Group(), legR = new THREE.Group(), armL = new THREE.Group(), armR = new THREE.Group();
+legL.position.set(-0.17, 0.8, 0); legR.position.set(0.17, 0.8, 0);
+legL.add(part(0.28, 0.8, 0.3, 0x264653, 0, -0.4, 0));
+legR.add(part(0.28, 0.8, 0.3, 0x264653, 0, -0.4, 0));
+armL.position.set(-0.47, 1.65, 0); armR.position.set(0.47, 1.65, 0);
+armL.add(part(0.2, 0.75, 0.25, 0xd9a77a, 0, -0.35, 0));
+armR.add(part(0.2, 0.75, 0.25, 0xd9a77a, 0, -0.35, 0));
+player.add(body, head, legL, legR, armL, armR);
+scene.add(player);
+
+let px = 0, pz = 0, faceAngle = 0, walkPhase = 0;
+let camYaw = 0, camPitch = 0.45;
+const CAM_DIST = 9;
+
+function blockedAt(x, z) {
+  const r = 0.5;
+  return insideAny(buildings, x, z) || insideAny(buildings, x + r, z) || insideAny(buildings, x - r, z) ||
+         insideAny(buildings, x, z + r) || insideAny(buildings, x, z - r);
+}
+
+// ================= Controls =================
+let joyX = 0, joyY = 0, running = false;
 const keys = {};
-
-const player = viewer.entities.add({
-  position: new Cesium.CallbackProperty(function () {
-    return Cesium.Cartesian3.fromDegrees(lon, lat, groundH + 1);
-  }, false),
-  cylinder: { length: 2, topRadius: 0.5, bottomRadius: 0.5, material: Cesium.Color.RED },
-  show: false
-});
-
-function updateGround(force) {
-  frameCount++;
-  if (!force && frameCount % 4 !== 0) return;
-  const c = Cesium.Cartographic.fromDegrees(lon, lat);
-  let h;
-  if (googleOK) {
-    try { h = viewer.scene.sampleHeight(c, [player]); } catch (e) { h = undefined; }
-  }
-  if (h === undefined) {
-    try { h = viewer.scene.globe.getHeight(c); } catch (e) { h = undefined; }
-  }
-  if (h !== undefined) {
-    if (!groundInit) { groundH = h; groundInit = true; }
-    else { groundH += (h - groundH) * 0.25; }
-  }
-}
-
-function updateCamera() {
-  viewer.camera.lookAt(
-    Cesium.Cartesian3.fromDegrees(lon, lat, groundH + 1),
-    new Cesium.HeadingPitchRange(
-      Cesium.Math.toRadians(camHeading),
-      Cesium.Math.toRadians(camPitch),
-      camRange
-    )
-  );
-}
-
-function showUI(show) {
-  ["lookZone", "joyBase", "runBtn"].forEach(function (id) {
-    document.getElementById(id).style.display = show ? "block" : "none";
-  });
-}
-
-function startPlayer() {
-  playing = true;
-  groundInit = false;
-  player.show = true;
-  viewer.scene.screenSpaceCameraController.enableInputs = false;
-  showUI(true);
-  updateGround(true);
-  updateCamera();
-}
-
-function stopPlayer() {
-  playing = false;
-  player.show = false;
-  viewer.scene.screenSpaceCameraController.enableInputs = true;
-  showUI(false);
-  viewer.camera.lookAtTransform(Cesium.Matrix4.IDENTITY);
-}
-
-// ---------- Joystick ----------
 const joyBase = document.getElementById("joyBase");
 const joyKnob = document.getElementById("joyKnob");
 let joyId = null;
@@ -186,98 +438,108 @@ function joyUpdate(e) {
   const r = joyBase.getBoundingClientRect();
   const cx = r.left + r.width / 2, cy = r.top + r.height / 2;
   let dx = e.clientX - cx, dy = e.clientY - cy;
-  const max = r.width / 2 - 10;
-  const len = Math.hypot(dx, dy);
+  const max = r.width / 2 - 10, len = Math.hypot(dx, dy);
   if (len > max) { dx = dx / len * max; dy = dy / len * max; }
   joyKnob.style.left = (35 + dx) + "px";
   joyKnob.style.top = (35 + dy) + "px";
-  joyX = dx / max;
-  joyY = dy / max;
+  joyX = dx / max; joyY = dy / max;
 }
-function joyEnd() {
-  joyId = null; joyX = 0; joyY = 0;
-  joyKnob.style.left = "35px"; joyKnob.style.top = "35px";
-}
-joyBase.addEventListener("pointerdown", function (e) {
-  e.preventDefault(); joyId = e.pointerId; joyBase.setPointerCapture(e.pointerId); joyUpdate(e);
-});
-joyBase.addEventListener("pointermove", function (e) { if (e.pointerId === joyId) joyUpdate(e); });
+function joyEnd() { joyId = null; joyX = 0; joyY = 0; joyKnob.style.left = "35px"; joyKnob.style.top = "35px"; }
+joyBase.addEventListener("pointerdown", e => { e.preventDefault(); joyId = e.pointerId; joyBase.setPointerCapture(e.pointerId); joyUpdate(e); });
+joyBase.addEventListener("pointermove", e => { if (e.pointerId === joyId) joyUpdate(e); });
 joyBase.addEventListener("pointerup", joyEnd);
 joyBase.addEventListener("pointercancel", joyEnd);
 
-// ---------- Look (swipe right side) ----------
 const lookZone = document.getElementById("lookZone");
 let lookId = null, lastX = 0, lastY = 0;
-lookZone.addEventListener("pointerdown", function (e) {
-  e.preventDefault(); lookId = e.pointerId; lookZone.setPointerCapture(e.pointerId);
-  lastX = e.clientX; lastY = e.clientY;
-});
-lookZone.addEventListener("pointermove", function (e) {
+lookZone.addEventListener("pointerdown", e => { e.preventDefault(); lookId = e.pointerId; lookZone.setPointerCapture(e.pointerId); lastX = e.clientX; lastY = e.clientY; });
+lookZone.addEventListener("pointermove", e => {
   if (e.pointerId !== lookId) return;
-  camHeading = (camHeading + (e.clientX - lastX) * 0.35 + 360) % 360;
-  camPitch = Math.max(-80, Math.min(-8, camPitch - (e.clientY - lastY) * 0.25));
+  camYaw += (e.clientX - lastX) * 0.006;
+  camPitch = Math.max(0.12, Math.min(1.25, camPitch + (e.clientY - lastY) * 0.004));
   lastX = e.clientX; lastY = e.clientY;
 });
-lookZone.addEventListener("pointerup", function () { lookId = null; });
-lookZone.addEventListener("pointercancel", function () { lookId = null; });
+lookZone.addEventListener("pointerup", () => { lookId = null; });
+lookZone.addEventListener("pointercancel", () => { lookId = null; });
 
-// ---------- Run button ----------
 const runBtn = document.getElementById("runBtn");
-runBtn.addEventListener("pointerdown", function (e) { e.preventDefault(); running = true; runBtn.classList.add("on"); });
-function runEnd() { running = false; runBtn.classList.remove("on"); }
+runBtn.addEventListener("pointerdown", e => { e.preventDefault(); running = true; runBtn.classList.add("on"); });
+const runEnd = () => { running = false; runBtn.classList.remove("on"); };
 runBtn.addEventListener("pointerup", runEnd);
 runBtn.addEventListener("pointercancel", runEnd);
 runBtn.addEventListener("pointerleave", runEnd);
 
-// ---------- Keyboard ----------
-window.addEventListener("keydown", function (e) { keys[e.key.toLowerCase()] = true; });
-window.addEventListener("keyup", function (e) { keys[e.key.toLowerCase()] = false; });
+window.addEventListener("keydown", e => { keys[e.key.toLowerCase()] = true; });
+window.addEventListener("keyup", e => { keys[e.key.toLowerCase()] = false; });
 
-// ---------- Game loop ----------
+document.getElementById("homeBtn").addEventListener("click", () => {
+  px = 0; pz = 0;
+  loadChunk(0, 0);
+});
+
+// ================= Game loop =================
 let lastT = performance.now();
 function loop(now) {
   const dt = Math.min((now - lastT) / 1000, 0.1);
   lastT = now;
 
-  if (playing) {
-    let x = joyX, y = joyY;
-    if (keys["w"] || keys["arrowup"]) y -= 1;
-    if (keys["s"] || keys["arrowdown"]) y += 1;
-    if (keys["a"] || keys["arrowleft"]) x -= 1;
-    if (keys["d"] || keys["arrowright"]) x += 1;
-    if (keys["q"]) camHeading = (camHeading - 90 * dt + 360) % 360;
-    if (keys["e"]) camHeading = (camHeading + 90 * dt) % 360;
+  let x = joyX, y = joyY;
+  if (keys["w"] || keys["arrowup"]) y -= 1;
+  if (keys["s"] || keys["arrowdown"]) y += 1;
+  if (keys["a"] || keys["arrowleft"]) x -= 1;
+  if (keys["d"] || keys["arrowright"]) x += 1;
+  if (keys["q"]) camYaw -= 1.6 * dt;
+  if (keys["e"]) camYaw += 1.6 * dt;
 
-    const mag = Math.min(1, Math.hypot(x, y));
-    if (mag > 0.08) {
-      const speed = (running || keys["shift"]) ? 14 : 5;
-      const dir = Cesium.Math.toRadians(camHeading) + Math.atan2(x, -y);
-      const dist = speed * mag * dt;
-      lat += (Math.cos(dir) * dist) / 111320;
-      lon += (Math.sin(dir) * dist) / (111320 * Math.cos(Cesium.Math.toRadians(lat)));
-    }
-    updateGround(false);
-    updateCamera();
+  const mag = Math.min(1, Math.hypot(x, y));
+  let moving = false;
+  if (mag > 0.08) {
+    const sy = Math.sin(camYaw), cy = Math.cos(camYaw);
+    let mx = x * cy - y * sy;
+    let mz = x * sy + y * cy;
+    const l = Math.hypot(mx, mz) || 1;
+    mx /= l; mz /= l;
+    const speed = (running || keys["shift"]) ? 9 : 4;
+    const step = speed * mag * dt;
+    const wasBlocked = blockedAt(px, pz);
+    const nx = px + mx * step, nz = pz + mz * step;
+    if (wasBlocked || !blockedAt(nx, pz)) px = nx;
+    if (wasBlocked || !blockedAt(px, nz)) pz = nz;
+    // smooth facing
+    const target = Math.atan2(mx, mz);
+    let diff = target - faceAngle;
+    while (diff > Math.PI) diff -= Math.PI * 2;
+    while (diff < -Math.PI) diff += Math.PI * 2;
+    faceAngle += diff * Math.min(1, dt * 12);
+    walkPhase += dt * speed * 2.2;
+    moving = true;
   }
+
+  const swing = moving ? Math.sin(walkPhase) * 0.8 : 0;
+  legL.rotation.x = swing; legR.rotation.x = -swing;
+  armL.rotation.x = -swing * 0.8; armR.rotation.x = swing * 0.8;
+  player.position.set(px, 0, pz);
+  player.rotation.y = faceAngle;
+
+  ground.position.set(px, 0, pz);
+
+  const cp = Math.cos(camPitch);
+  camera.position.set(
+    px - Math.sin(camYaw) * cp * CAM_DIST,
+    1.6 + Math.sin(camPitch) * CAM_DIST,
+    pz + Math.cos(camYaw) * cp * CAM_DIST
+  );
+  camera.lookAt(px, 1.5, pz);
+
+  if (!loading && chunkCenter && Math.hypot(px - chunkCenter.x, pz - chunkCenter.z) > 220) {
+    loadChunk(px, pz);
+  }
+
+  renderer.render(scene, camera);
   requestAnimationFrame(loop);
 }
 requestAnimationFrame(loop);
-
-// ---------- Map buttons ----------
-function showSriLanka() {
-  stopPlayer();
-  viewer.camera.flyTo({
-    destination: Cesium.Cartesian3.fromDegrees(80.7, 7.8, 1000000), duration: 2
-  });
-}
-function showMatara() {
-  stopPlayer();
-  viewer.camera.flyTo({
-    destination: Cesium.Cartesian3.fromDegrees(80.55, 5.95, 3000), duration: 2
-  });
-}
-
-showSriLanka();
+loadChunk(0, 0);
 </script>
 </body>
 </html>
